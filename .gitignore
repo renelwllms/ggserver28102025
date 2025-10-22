@@ -1,0 +1,96 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+
+# eslint
+.eslintcache
+
+# stylelint
+.stylelintcache
+
+# Database credentials (keep this excluded)
+routes/utils.js
+
+# Claude Code files
+.claude/
+CLAUDE.md
+
+# Troubleshooting files (root level only)
+/*.sql
+/*backup*.js
+/*fix*.js
+/*check*.js
+/*analyze*.js
+/*migration*.js
+/*undo*.js
+/*test-db*.js
+/*add*.js
+/1-*.js
+/2-*.js
+/3-*.js
+/4-*.js
+/5-*.js
+/*.json
+!package.json
+!package-lock.json
+/*.bak
+
+# Generated certificates (test files)
+/generateCertificate/*.pdf
+/generateCertificate/Certificate_*.pdf
+
+# School fix reports
+school-*.pdf
+school-*.json
+
+# Student data backups
+student-*.json
+added-schools-*.json
+undo-data-*.json
+
+# Troubleshooting markdown files
+*_COMPLETE.md
+*_IMPLEMENTED.md
+*_SUGGESTIONS.md
+*_DOCUMENTATION.md
+*_OPTIMIZATION.md
+
+# Log files
+logs/

@@ -1176,25 +1176,27 @@ async function checkMicrocredentialEligibility(id, CourseName, StudentName){
     request.input("id", sql.Int, id);
 
     console.log('CheckMirco - 04');
-    const query = `    
+    const query = `
       DECLARE @StudentID INT  = 0;
       DECLARE @CourseID INT  = 0;
       DECLARE @CourseCount INT = 0;
       DECLARE @GroupID INT = 0;
-      DECLARE @CompleteCount INT = 0;    
+      DECLARE @CompleteCount INT = 0;
 
       SELECT TOP 1 @StudentID =  StudentID, @CourseID = CourseID FROM tblStudentInCourse WHERE (id = @id);
-      
+
       SELECT TOP 1 @GroupID = GroupId  FROM [dbo].[tblMicroCredentialEligibility]  WHERE CourseId = @CourseID;
 
       SELECT @CourseCount = COUNT(*) FROM [dbo].[tblMicroCredentialEligibility] WHERE GroupId = @GroupID;
 
-      
-      SELECT @CompleteCount = COUNT(*) FROM [dbo].[tblStudentInCourse] 
-      WHERE CourseID IN (SELECT CourseID FROM [dbo].[tblMicroCredentialEligibility] 
+
+      SELECT @CompleteCount = COUNT(*) FROM [dbo].[tblStudentInCourse]
+      WHERE CourseID IN (SELECT CourseID FROM [dbo].[tblMicroCredentialEligibility]
       WHERE GroupId = (SELECT TOP 1 GroupId FROM [dbo].[tblMicroCredentialEligibility] WHERE CourseId = @CourseID))
       AND (ISNULL(CourseStatus, '') <> '' AND CourseStatus <> 'Not Yet Achieved');
-      SELECT CASE WHEN (@CourseCount > 0 AND @CompleteCount > 0 AND  @CourseCount <= @CompleteCount) THEN 1  ELSE 0  END AS IsEligibleMicrocredential;
+      SELECT CASE WHEN (@CourseCount > 0 AND @CompleteCount > 0 AND  @CourseCount <= @CompleteCount) THEN 1  ELSE 0  END AS IsEligibleMicrocredential,
+             (SELECT TOP 1 NotificationEmail FROM [dbo].[tblMicroCredentialEligibility] WHERE GroupId = @GroupID) AS NotificationEmail,
+             (SELECT TOP 1 GroupName FROM [dbo].[tblMicroCredentialEligibility] WHERE GroupId = @GroupID) AS GroupName;
 
       SELECT  C.CourseID, C.CourseName FROM [dbo].[tblMicroCredentialEligibility] E
       JOIN [dbo].[tblCourse] C ON E.CourseID = C.CourseID WHERE E.GroupId = @GroupID;
@@ -1209,19 +1211,26 @@ async function checkMicrocredentialEligibility(id, CourseName, StudentName){
         console.log('CheckMirco - 07');
         if (resultRow) {
           console.log('CheckMirco - 05');
-          console.log(resultRow);          
+          console.log(resultRow);
           if(resultRow.IsEligibleMicrocredential === 1){
             const courseList = result?.recordsets?.[1] || [];
-            
+
           console.log('result - 06');
-          console.log(courseList);        
+          console.log(courseList);
             const CourseNames = courseList.map(c => c.CourseName).join(", ");
+            const notificationEmail = resultRow.NotificationEmail || 'jorgia@thegetgroup.co.nz';
+            const groupName = resultRow.GroupName || 'Microcredential Group';
+
+            console.log(`Sending microcredential notification to: ${notificationEmail}`);
+
             var data = {
-              CourseName, 
+              CourseName,
               StudentName,
-              CourseNames
+              CourseNames,
+              GroupName: groupName
             }
-            SendTemplateEmail("E0004", `Microcredential Completion - ${StudentName}`, data);
+            // Pass the notification email as the 4th parameter
+            SendTemplateEmail("E0004", `Microcredential Completion - ${StudentName}`, data, notificationEmail);
           }
         }
       }
@@ -1302,7 +1311,7 @@ router.post("/Add", isAuthenticated, async function (req, res, next) {
   try {
     const pool = await getPool();
     const request = await pool.request();
-    const SchoolNumber = Number(req.body.SchoolNumber);
+
     const {
       FirstName,
       LastName,
@@ -1314,62 +1323,171 @@ router.post("/Add", isAuthenticated, async function (req, res, next) {
       Code,
     } = req.body;
 
-    if (!FirstName || !LastName) {
-      return res.send({ code: 1, message: "Please select" });
+    // Enhanced validation
+    if (!FirstName || !LastName || !Email || !DOB || !Gender || !Ethnicity || !SchoolName) {
+      return res.send({
+        code: 1,
+        message: "All required fields must be provided (FirstName, LastName, Email, DOB, Gender, Ethnicity, SchoolName)"
+      });
     }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(Email)) {
+      return res.send({
+        code: 1,
+        message: "Invalid email format"
+      });
+    }
+
+    // Safely handle SchoolNumber
+    const SchoolNumber = req.body.SchoolNumber && !isNaN(req.body.SchoolNumber)
+      ? Number(req.body.SchoolNumber)
+      : null;
+
+    // Convert DOB to proper datetime
+    const dobDate = DOB ? new Date(DOB) : null;
+    if (!dobDate || isNaN(dobDate.getTime())) {
+      return res.send({
+        code: 1,
+        message: "Invalid date of birth format"
+      });
+    }
+
+    // Get the current user's email from authentication
+    const userEmail = req.info?.userPrincipalName || req.info?.mail || '';
+
+    logger.info(`Adding new student: ${FirstName} ${LastName} (${Email}) by user ${userEmail}`);
 
     request.input("FirstName", sql.VarChar, FirstName);
     request.input("LastName", sql.VarChar, LastName);
     request.input("SchoolName", sql.VarChar, SchoolName);
     request.input("Gender", sql.VarChar, Gender);
-    request.input("DOB", sql.VarChar, DOB);
+    request.input("DOB", sql.DateTime, dobDate);
     request.input("Email", sql.VarChar, Email);
     request.input("Ethnicity", sql.VarChar, Ethnicity);
     request.input("SchoolNumber", sql.Int, SchoolNumber);
-    request.input("LearnerType", sql.Int, 2);
-    request.input("CourseType", sql.VarChar, "Workshop");
     request.input("Code", sql.VarChar, Code || "");
+    request.input("UserEmail", sql.VarChar, userEmail);
+
     const query = `
-      BEGIN TRANSACTION
-      DECLARE @CreateDate DATETIME = GETDATE();
-      DECLARE @StudentID INT = 0;
-      SELECT TOP 1 @StudentID = StudentID FROM tblStudentInfo WHERE FirstName = @FirstName AND LastName = @LastName AND Gender = @Gender AND Email = @Email AND Ethnicity = @Ethnicity AND DateOfBirth = @DOB
-      IF(@StudentID < 1)
-      BEGIN
-        INSERT INTO tblStudentInfo (Code, FirstName, LastName, SchoolName, SchoolNumber, Gender, DateOfBirth, Email, Ethnicity, CreateDate, isAdd, Status)
-        VALUES (@Code, @FirstName, @LastName, @SchoolName, @SchoolNumber, @Gender, @DOB, @Email, @Ethnicity, @CreateDate, 1, 'On Going')
+      BEGIN TRY
+        BEGIN TRANSACTION
+
+        DECLARE @CreateDate DATETIME = GETDATE();
+        DECLARE @StudentID INT = 0;
+        DECLARE @TutorId INT = NULL;
+        DECLARE @TutorName NVARCHAR(255) = NULL;
+        DECLARE @CourseID INT = NULL;
+        DECLARE @UnitStandardIDs NVARCHAR(MAX) = NULL;
+        DECLARE @IsExist INT = 0;
+        DECLARE @SICID INT;
+
+        -- Look up the delivery specialist ID for the current user
+        SELECT TOP 1 @TutorId = ds.Id, @TutorName = ds.DeliverySpecialist
+        FROM tblDeliverySpecialist ds
+        INNER JOIN tblAdminUser au ON ds.UserId = au.Id
+        WHERE au.Email = @UserEmail;
+
+        -- Check for existing student (to determine if we need a new record)
+        SELECT TOP 1 @StudentID = StudentID
+        FROM tblStudentInfo s
+        WHERE FirstName = @FirstName
+          AND LastName = @LastName
+          AND Gender = @Gender
+          AND Email = @Email
+          AND Ethnicity = @Ethnicity
+          AND DateOfBirth = @DOB;
+
+        -- Always insert new student record for each workshop/enrollment
+        -- This allows tracking students across multiple workshops
+        INSERT INTO tblStudentInfo (
+          Code, FirstName, LastName, School, SchoolName, SchoolNumber,
+          Gender, DateOfBirth, Email, Ethnicity, CreateDate,
+          isAdd, Status, TutorId, Tutor
+        )
+        VALUES (
+          @Code, @FirstName, @LastName, @SchoolName, @SchoolName, @SchoolNumber,
+          @Gender, @DOB, @Email, @Ethnicity, @CreateDate,
+          1, 'On Going', @TutorId, @TutorName
+        );
+
         SELECT @StudentID = @@IDENTITY;
-      END
-      ELSE
-      BEGIN
-        THROW 50001, 'This student is already registered.', 1;
-      END
-      IF(@@ERROR > 0)
-      BEGIN
-        ROLLBACK;
-      END
-      BEGIN
-        COMMIT;
-      END
-    ;
+
+        -- If Code is provided, link student to workshop via tblStudentInCourse
+        IF (@Code IS NOT NULL AND @Code <> '')
+        BEGIN
+          SELECT TOP 1 @CourseID = CourseID, @UnitStandardIDs = UnitStandardIDs
+          FROM tblWorkshop WHERE Code = @Code;
+
+          IF (@CourseID > 0)
+          BEGIN
+            -- Check if already enrolled in this workshop
+            SELECT @IsExist = COUNT(*)
+            FROM tblStudentInCourse
+            WHERE StudentID = @StudentID AND Code = @Code;
+
+            IF (@IsExist = 0)
+            BEGIN
+              INSERT INTO tblStudentInCourse(StudentID, Code, CourseID, IsActive, LearnerType, CourseType, CreatDate, LastModifyDate)
+              VALUES (@StudentID, @Code, @CourseID, 1, 2, 'Workshop', GETDATE(), GETDATE());
+
+              SELECT @SICID = @@IDENTITY;
+
+              -- Insert unit standards
+              INSERT INTO tblStudentInCourseUnitStandard
+              (StudentID, SICId, CourseID, UnitStandardID, IsAditional, IsActive, CreatDate, LastModifyDate)
+              SELECT @StudentID, @SICID, @CourseID, UnitStandardID, 0, 1, GETDATE(), GETDATE()
+              FROM [dbo].[tblCourseUnitStandard]
+              WHERE CourseID = @CourseID
+                OR (ISNULL(@UnitStandardIDs, '') <> '' AND UnitStandardID IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@UnitStandardIDs, ',')));
+            END
+          END
+        END
+
+        COMMIT TRANSACTION;
+
+        -- Return the new StudentID for logging
+        SELECT @StudentID as NewStudentID;
+
+      END TRY
+      BEGIN CATCH
+        IF @@TRANCOUNT > 0
+          ROLLBACK TRANSACTION;
+        THROW;
+      END CATCH
     `;
 
-    request.query(query, (err) => {
+    request.query(query, (err, result) => {
       if (err) {
+        logger.error(`Failed to add student ${FirstName} ${LastName}: ${err.message}`);
+
         if (err.number === 50001) {
           return res.send({
             code: 1,
             data: false,
-            message: err.message, // Maximum capacity reached
+            message: err.message,
           });
         }
+
+        return res.send({
+          code: 1,
+          data: false,
+          message: "An error occurred while adding the student. Please try again.",
+        });
       }
+
+      const newStudentID = result?.recordset?.[0]?.NewStudentID;
+      logger.info(`Student added successfully: ${FirstName} ${LastName} (StudentID: ${newStudentID})`);
+
       return res.send({
         code: 0,
         data: "success",
+        studentId: newStudentID,
       });
     });
   } catch (error) {
+    logger.error(`Error in Add Student endpoint: ${error.message}`);
     next(error);
   }
 }
@@ -2083,7 +2201,7 @@ router.post("/checkDuplicate", async function (req, res, next) {
   try {
     const pool = await getPool();
     const request = await pool.request();
-    const { FirstName, LastName, DateOfBirth, Email } = req.body;
+    const { FirstName, LastName, DateOfBirth, Email, School } = req.body;
 
     if (!FirstName || !LastName) {
       return res.send({ code: 1, message: "FirstName and LastName are required" });
@@ -2098,31 +2216,46 @@ router.post("/checkDuplicate", async function (req, res, next) {
       }
     }
 
+    console.log('Duplicate check params:', {
+      FirstName,
+      LastName,
+      DateOfBirth: DateOfBirth,
+      FormattedDOB: formattedDOB,
+      School
+    });
+
     request.input("FirstName", sql.VarChar, FirstName);
     request.input("LastName", sql.VarChar, LastName);
     request.input("DateOfBirth", sql.VarChar, formattedDOB);
     request.input("Email", sql.VarChar, Email || "");
+    request.input("School", sql.VarChar, School || "");
 
+    // Match students where ALL criteria match: FirstName AND LastName AND DOB AND School
+    // This ensures we only show true duplicates, not partial matches
     let query = `
-      SELECT StudentID, FirstName, LastName, Email, DateOfBirth, Gender, Ethnicity, PhoneNumber, School
+      SELECT StudentID, FirstName, LastName, Email, DateOfBirth, Gender, Ethnicity, PhoneNumber, School, SchoolName, SchoolNumber, Status
       FROM tblStudentInfo
       WHERE FirstName = @FirstName
         AND LastName = @LastName
         AND (IsDeleted IS NULL OR IsDeleted = 0)
     `;
 
-    // If DOB is provided, add it to the search
+    // Require DOB to match if provided (strict matching)
     if (DateOfBirth) {
       query += ` AND DateOfBirth = @DateOfBirth`;
     }
 
-    // If Email is provided, also search by email
-    if (Email) {
-      query += ` OR (Email = @Email AND (IsDeleted IS NULL OR IsDeleted = 0))`;
+    // Require School to match if provided (case-insensitive, flexible matching)
+    if (School) {
+      query += ` AND (LOWER(School) LIKE '%' + LOWER(@School) + '%' OR LOWER(SchoolName) LIKE '%' + LOWER(@School) + '%')`;
     }
+
+    console.log('Duplicate check query:', query);
 
     const result = await request.query(query);
     const students = result.recordset || [];
+
+    console.log('Duplicate check results:', students.length, 'students found');
 
     if (students.length > 0) {
       return res.send({
@@ -2178,8 +2311,11 @@ router.post("/remoteRegister", async function (req, res, next) {
       CourseCategory, // "Work & Life Skills" or "Farming & Horticulture"
       SelectedCourses, // Array of course IDs or unit standard IDs
       CustomCourse,
-      Agreement
+      Agreement,
+      ExistingStudentID // If user selected "This Is Me" from duplicate modal
     } = req.body;
+
+    console.log('Remote register - ExistingStudentID:', ExistingStudentID);
 
     // Validation
     if (!FirstName || !LastName || !Email || !CourseCategory) {
@@ -2228,30 +2364,22 @@ router.post("/remoteRegister", async function (req, res, next) {
     request.input("SelectedCourses", sql.VarChar, JSON.stringify(SelectedCourses || []));
     request.input("CustomCourse", sql.VarChar, CustomCourse || "");
     request.input("NZQAPreference", sql.VarChar, NZQAPreference || "");
+    request.input("ExistingStudentID", sql.Int, ExistingStudentID || 0);
 
     const query = `
       BEGIN TRY
         BEGIN TRANSACTION
 
         DECLARE @CreateDate DATETIME = GETDATE();
-        DECLARE @StudentID INT = 0;
+        DECLARE @StudentID INT = @ExistingStudentID;
         DECLARE @SICId INT = 0;
         DECLARE @EnrolledCount INT = 0;
 
-        -- Check if student already exists
-        SELECT TOP 1 @StudentID = StudentID
-        FROM tblStudentInfo
-        WHERE FirstName = @FirstName
-          AND LastName = @LastName
-          AND Email = @Email
-          AND (IsDeleted IS NULL OR IsDeleted = 0)
-
-        IF(@StudentID > 0)
+        -- If ExistingStudentID is provided, use that existing student record
+        -- Otherwise, create a new student record
+        IF (@StudentID = 0)
         BEGIN
-          THROW 50001, 'This student is already registered.', 1;
-        END
-
-        -- Insert new remote learner (Code is NULL for remote learners)
+          -- Insert new remote learner (Code is NULL for remote learners)
         INSERT INTO tblStudentInfo (
           FirstName, LastName, DateOfBirth, Gender, Ethnicity, PhoneNumber,
           Email, School, SchoolNumber, TeacherName, TeacherEmail, InvoiceEmail, WorkbookOption,
@@ -2266,9 +2394,15 @@ router.post("/remoteRegister", async function (req, res, next) {
           CASE WHEN @CourseCategory = 'Work & Life Skills' THEN @SelectedCourses ELSE NULL END,
           CASE WHEN @CourseCategory = 'Farming & Horticulture' THEN @SelectedCourses ELSE NULL END
         )
-        SELECT @StudentID = @@IDENTITY;
+          SELECT @StudentID = @@IDENTITY;
 
-        PRINT 'Student created with ID: ' + CAST(@StudentID AS VARCHAR);
+          PRINT 'New student created with ID: ' + CAST(@StudentID AS VARCHAR);
+        END
+        ELSE
+        BEGIN
+          PRINT 'Using existing student ID: ' + CAST(@StudentID AS VARCHAR);
+        END
+
         PRINT 'Course Category: ' + @CourseCategory;
         PRINT 'Selected Courses JSON: ' + @SelectedCourses;
 
@@ -2424,6 +2558,223 @@ router.post("/remoteRegister", async function (req, res, next) {
     return res.send({
       code: 500,
       message: "Registration failed. Please try again.",
+      error: error.message
+    });
+  }
+});
+
+// Get all workshops for a student
+router.get("/getStudentWorkshops", async function (req, res, next) {
+  try {
+    const { StudentID } = req.query;
+
+    console.log('Getting workshops for StudentID:', StudentID);
+
+    const pool = await getPool();
+    const request = pool.request();
+
+    request.input("StudentID", sql.Int, StudentID);
+
+    const query = `
+      SELECT
+        sic.id as StudentInCourseID,
+        sic.Code,
+        CASE WHEN sic.IsActive = 1 THEN 'Active' ELSE 'Inactive' END as Status,
+        c.CourseName,
+        w.SchoolName,
+        w.SchoolNumber
+      FROM tblStudentInCourse sic
+      LEFT JOIN tblCourse c ON sic.CourseID = c.CourseID
+      LEFT JOIN tblWorkshop w ON sic.Code = w.Code
+      WHERE sic.StudentID = @StudentID
+        AND sic.Code IS NOT NULL
+        AND sic.IsActive = 1
+      ORDER BY sic.CreatDate DESC
+    `;
+
+    const result = await request.query(query);
+
+    console.log('Found workshops:', result.recordset.length);
+
+    return res.send({
+      code: 0,
+      data: result.recordset
+    });
+  } catch (error) {
+    console.error("Error getting student workshops:", error);
+    return res.send({
+      code: 500,
+      message: "Failed to get student workshops",
+      error: error.message
+    });
+  }
+});
+
+// Get all available workshops
+router.get("/getAllWorkshops", async function (req, res, next) {
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+
+    const query = `
+      SELECT DISTINCT
+        w.Code,
+        w.CourseName,
+        w.SchoolName,
+        w.SchoolNumber
+      FROM tblWorkshop w
+      WHERE w.Code IS NOT NULL
+      ORDER BY w.SchoolName, w.CourseName
+    `;
+
+    const result = await request.query(query);
+
+    console.log('Found available workshops:', result.recordset.length);
+
+    return res.send({
+      code: 0,
+      data: result.recordset
+    });
+  } catch (error) {
+    console.error("Error getting all workshops:", error);
+    return res.send({
+      code: 500,
+      message: "Failed to get workshops",
+      error: error.message
+    });
+  }
+});
+
+// Add workshop enrollment for a student
+router.post("/addWorkshopEnrollment", async function (req, res, next) {
+  try {
+    const { StudentID, WorkshopCode } = req.body;
+
+    console.log('Adding workshop enrollment:', { StudentID, WorkshopCode });
+
+    const pool = await getPool();
+    const request = pool.request();
+
+    request.input("StudentID", sql.Int, StudentID);
+    request.input("WorkshopCode", sql.VarChar, WorkshopCode);
+
+    // First check if enrollment already exists
+    const checkQuery = `
+      SELECT COUNT(*) as Count
+      FROM tblStudentInCourse
+      WHERE StudentID = @StudentID
+        AND Code = @WorkshopCode
+        AND IsActive = 1
+    `;
+
+    const checkResult = await request.query(checkQuery);
+
+    if (checkResult.recordset[0].Count > 0) {
+      return res.send({
+        code: 1,
+        success: false,
+        message: "Student is already enrolled in this workshop"
+      });
+    }
+
+    // Get workshop details
+    const request2 = pool.request();
+    request2.input("WorkshopCode", sql.VarChar, WorkshopCode);
+
+    const workshopQuery = `
+      SELECT TOP 1
+        w.Code,
+        w.CourseID,
+        w.CourseName,
+        w.SchoolName,
+        w.SchoolNumber
+      FROM tblWorkshop w
+      WHERE w.Code = @WorkshopCode
+    `;
+
+    const workshopResult = await request2.query(workshopQuery);
+
+    if (workshopResult.recordset.length === 0) {
+      return res.send({
+        code: 1,
+        success: false,
+        message: "Workshop not found"
+      });
+    }
+
+    const workshop = workshopResult.recordset[0];
+
+    // Insert enrollment
+    const request3 = pool.request();
+    request3.input("StudentID", sql.Int, StudentID);
+    request3.input("CourseID", sql.Int, workshop.CourseID);
+    request3.input("Code", sql.VarChar, workshop.Code);
+
+    const insertQuery = `
+      INSERT INTO tblStudentInCourse
+        (StudentID, CourseID, Code, IsActive, LearnerType, CourseType, CreatDate, LastModifyDate, CourseStatus)
+      VALUES
+        (@StudentID, @CourseID, @Code, 1, 2, 'Workshop', GETDATE(), GETDATE(), 'Pending')
+
+      SELECT @@IDENTITY as NewID
+    `;
+
+    const insertResult = await request3.query(insertQuery);
+    const newID = insertResult.recordset[0].NewID;
+
+    console.log('Workshop enrollment created with ID:', newID);
+
+    return res.send({
+      code: 0,
+      success: true,
+      message: "Workshop enrollment added successfully",
+      data: { StudentInCourseID: newID }
+    });
+  } catch (error) {
+    console.error("Error adding workshop enrollment:", error);
+    return res.send({
+      code: 500,
+      success: false,
+      message: "Failed to add workshop enrollment",
+      error: error.message
+    });
+  }
+});
+
+// Remove workshop enrollment for a student
+router.post("/removeWorkshopEnrollment", async function (req, res, next) {
+  try {
+    const { StudentInCourseID } = req.body;
+
+    console.log('Removing workshop enrollment ID:', StudentInCourseID);
+
+    const pool = await getPool();
+    const request = pool.request();
+
+    request.input("StudentInCourseID", sql.Int, StudentInCourseID);
+
+    // Mark as inactive to remove workshop enrollment
+    const query = `
+      UPDATE tblStudentInCourse
+      SET IsActive = 0, LastModifyDate = GETDATE()
+      WHERE id = @StudentInCourseID
+    `;
+
+    await request.query(query);
+
+    console.log('Workshop enrollment removed successfully');
+
+    return res.send({
+      code: 0,
+      success: true,
+      message: "Workshop enrollment removed successfully"
+    });
+  } catch (error) {
+    console.error("Error removing workshop enrollment:", error);
+    return res.send({
+      code: 500,
+      success: false,
+      message: "Failed to remove workshop enrollment",
       error: error.message
     });
   }

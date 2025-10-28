@@ -175,7 +175,7 @@ async function email(code, subject, workShopCode, CourseStatus) {
     }
 }
 
-async function SendTemplateEmail(code, subject, data) {
+async function SendTemplateEmail(code, subject, data, overrideEmail = null) {
     try {
         console.log("01");
         const accessToken = await getToken();
@@ -200,10 +200,13 @@ async function SendTemplateEmail(code, subject, data) {
             }
         }
 
-        console.log("07"); 
+        console.log("07");
         console.log("08");
         var htmlContent = emailBody;
-        
+
+        // Use override email if provided, otherwise use config email
+        const recipientEmail = overrideEmail || emailConfig.emailAddress;
+        console.log(`Sending email to: ${recipientEmail}`);
         console.log(htmlContent);
         const mailOptions = {
             message: {
@@ -215,7 +218,7 @@ async function SendTemplateEmail(code, subject, data) {
                 toRecipients: [
                     {
                         emailAddress: {
-                            address: emailConfig.emailAddress,
+                            address: recipientEmail,
                         },
                     },
                 ],

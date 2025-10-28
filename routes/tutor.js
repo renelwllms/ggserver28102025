@@ -946,7 +946,7 @@ router.post("/workshop/info", async function (req, res, next) {
       WHERE Code = @Code AND (IsDeleted IS NULL OR IsDeleted = 0);
 
       SELECT @MaxStudents = StudentsNum
-      FROM tblWorkshop 
+      FROM tblWorkshop
       WHERE Code = @Code;
 
       SELECT TOP 1 @SchoolName = SchoolName FROM [dbo].[tblSchoolWorkplace] WHERE SchoolNumber = @SchoolNumber
@@ -956,20 +956,30 @@ router.post("/workshop/info", async function (req, res, next) {
       BEGIN
         DECLARE @CreateDate DATETIME = GETDATE();
         SELECT TOP 1 @StudentID = StudentID FROM tblStudentInfo WHERE FirstName = @FirstName AND LastName = @LastName AND Gender = @Gender AND Email = @Email AND Ethnicity = @Ethnicity AND DateOfBirth = @DOB
-        IF(@StudentID < 1)
+        IF(@StudentID < 1 OR @StudentID IS NULL)
         BEGIN
-          -- Insert new student record
+          -- Insert new student record for each workshop enrollment
           INSERT INTO tblStudentInfo (
             Code, FirstName, LastName, SchoolName, School, SchoolNumber, Gender, DateOfBirth, Email, Ethnicity, CreateDate, Status
           ) VALUES (
             @Code, @FirstName, @LastName, @SchoolName, @SchoolName, @SchoolNumber, @Gender, @DOB, @Email, @Ethnicity, @CreateDate, 'On Going'
           ) SELECT @StudentID = @@IDENTITY;
         END
+        ELSE
+        BEGIN
+          -- Student exists, create a new record for this workshop to track multiple workshop enrollments
+          INSERT INTO tblStudentInfo (
+            Code, FirstName, LastName, SchoolName, School, SchoolNumber, Gender, DateOfBirth, Email, Ethnicity, CreateDate, Status
+          ) VALUES (
+            @Code, @FirstName, @LastName, @SchoolName, @SchoolName, @SchoolNumber, @Gender, @DOB, @Email, @Ethnicity, @CreateDate, 'On Going'
+          ) SELECT @StudentID = @@IDENTITY;
+        END
+
         -- Calculate remaining spots
         SET @RemainingSpots = @MaxStudents - (@CurrentCount + 1);
-        
+
         SELECT TOP 1 @CourseID =  CourseID, @UnitStandardIDs = UnitStandardIDs from tblWorkshop WHERE Code = @Code
-        
+
         SELECT @IsExist = COUNT(*) FROM tblStudentInCourse WHERE StudentID = @StudentID AND Code = @Code;
         IF(@IsExist = 0)
         BEGIN
@@ -978,7 +988,7 @@ router.post("/workshop/info", async function (req, res, next) {
             INSERT INTO tblStudentInCourse(StudentID, Code, CourseID, IsActive, LearnerType, CourseType, CreatDate, LastModifyDate)
             VALUES   (@StudentID, @Code, @CourseID, 1, @LearnerType, @CourseType, GETDATE(), GETDATE());
             SELECT @SICID = @@IDENTITY;
-            INSERT INTO tblStudentInCourseUnitStandard 
+            INSERT INTO tblStudentInCourseUnitStandard
             (StudentID, SICId, CourseID, UnitStandardID, IsAditional, IsActive, CreatDate, LastModifyDate)
             SELECT @StudentID, @SICID, @CourseID, UnitStandardID, 0, 1, GETDATE(), GETDATE() FROM [dbo].[tblCourseUnitStandard] WHERE CourseID = @CourseID OR (ISNULL(@UnitStandardIDs, '') <> '' AND UnitStandardID IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@UnitStandardIDs, ',')))
           END
@@ -1131,17 +1141,21 @@ router.post(
       SELECT TOP 1 @CourseID =  CourseID, @UnitStandardIDs = UnitStandardIDs from tblWorkshop WHERE Code = @Code
       IF(@CourseID > 0)
       BEGIN
-      
+
       SELECT TOP 1 @StudentID = StudentID, @StdCCode = Code FROM tblStudentInfo WHERE FirstName = @FirstName AND LastName = @LastName AND Gender = @Gender AND Email = @Email AND Ethnicity = @Ethnicity AND DateOfBirth = @DOB
-      IF(@StudentID < 1)
+      IF(@StudentID < 1 OR @StudentID IS NULL)
       BEGIN
+        -- Insert new student record for each workshop enrollment
         INSERT INTO tblStudentInfo (Code,FirstName,LastName,SchoolName,SchoolNumber,Gender,DateOfBirth,Email,Ethnicity,CreateDate,isAdd, Status)
         VALUES (@Code,@FirstName,@LastName,@SchoolName,@SchoolNumber,@Gender,@DOB,@Email,@Ethnicity,@CreateDate,1, 'On Going')
         SELECT @StudentID = @@IDENTITY;
       END
       ELSE
       BEGIN
-        UPDATE tblStudentInfo SET Code = @Code  WHERE StudentID = @StudentID
+        -- Student exists, create a new record for this workshop to track multiple workshop enrollments
+        INSERT INTO tblStudentInfo (Code,FirstName,LastName,SchoolName,SchoolNumber,Gender,DateOfBirth,Email,Ethnicity,CreateDate,isAdd, Status)
+        VALUES (@Code,@FirstName,@LastName,@SchoolName,@SchoolNumber,@Gender,@DOB,@Email,@Ethnicity,@CreateDate,1, 'On Going')
+        SELECT @StudentID = @@IDENTITY;
       END
         SELECT @IsExist = COUNT(*) FROM tblStudentInCourse WHERE StudentID = @StudentID AND Code = @Code;
         IF(@IsExist = 0)
@@ -1149,7 +1163,7 @@ router.post(
           INSERT INTO tblStudentInCourse(StudentID, Code, CourseID, IsActive, LearnerType, CourseType, CreatDate, LastModifyDate)
           VALUES   (@StudentID, @Code, @CourseID, 1, @LearnerType, @CourseType, GETDATE(), GETDATE());
           SELECT @SICID = @@IDENTITY;
-          INSERT INTO tblStudentInCourseUnitStandard 
+          INSERT INTO tblStudentInCourseUnitStandard
           (StudentID, SICId, CourseID, UnitStandardID, IsAditional, IsActive, CreatDate, LastModifyDate)
           SELECT @StudentID, @SICID, @CourseID, UnitStandardID, 0, 1, GETDATE(), GETDATE() FROM [dbo].[tblCourseUnitStandard] WHERE  CourseID = @CourseID OR (ISNULL(@UnitStandardIDs, '') <> '' AND UnitStandardID IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@UnitStandardIDs, ',')))
         END
@@ -1158,7 +1172,7 @@ router.post(
          THROW 50001, 'The student already in this workshop.', 1;
         END
       END
-      
+
       IF(@@ERROR > 0)
       BEGIN
         ROLLBACK;

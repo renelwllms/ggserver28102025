@@ -20,14 +20,14 @@ const logger = require("../log/logger");
 
 const axios = require("axios");
 const { stringify } = require("qs");
-const sendMailUrl =
-  "https://graph.microsoft.com/v1.0/users/Admin@thegetgroup.co.nz/sendMail";
-const clientId = "e8d3a4a4-2922-44fa-8487-dc994f065e56";
-const clientSecret = "qqe8Q~cf4EQWYmWOcuX5qUGqbcSAk9gDK8Ohtbxo";
+
+// Use environment variables for sensitive credentials
+const sendMailUrl = `https://graph.microsoft.com/v1.0/users/${process.env.EMAIL_SENDER}/sendMail`;
+const clientId = process.env.AZURE_CLIENT_ID;
+const clientSecret = process.env.AZURE_CLIENT_SECRET;
 
 async function getToken() {
-  const tokenUrl =
-    "https://login.microsoftonline.com/807cd602-32e3-4a35-a30e-2ac56ecf53d6/oauth2/v2.0/token";
+  const tokenUrl = `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/oauth2/v2.0/token`;
 
   const params = {
     client_id: clientId,

@@ -1779,7 +1779,7 @@ router.get("/Commlist", isAuthenticated, async function (req, res, next) {
 
 async function GetEmailTemplate(data) {
   console.log("Start handles");
-  const templatePath = path.join(__dirname, "email\\emailtemplate.html");
+  const templatePath = path.join(__dirname, "email/emailtemplate.html");
   console.log(`templatePath path : ${templatePath}`);
   const templatePageContent = await fs.promises.readFile(templatePath, "utf8");
   console.log(`Read file from above path`);

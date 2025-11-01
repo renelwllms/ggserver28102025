@@ -2,7 +2,35 @@ const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
 const logger = require("../log/logger");
+const os = require("os");
 // Load the Word template
+
+// Helper function to get Puppeteer launch options
+function getPuppeteerOptions() {
+  const tmpDir = path.join(os.tmpdir(), 'puppeteer-chrome-' + Date.now());
+  return {
+    headless: true,
+    executablePath: "/home/epladmin/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-gpu-sandbox",
+      "--no-zygote",
+      "--disable-seccomp-filter-sandbox",
+      "--disable-namespace-sandbox",
+      "--disable-features=VizDisplayCompositor,NetworkService",
+      "--disable-background-networking",
+      "--disable-breakpad",
+      "--disable-component-extensions-with-background-pages",
+      "--js-flags=--max-old-space-size=512",
+      `--user-data-dir=${tmpDir}`
+    ],
+    ignoreDefaultArgs: ['--disable-extensions']
+  };
+}
 
 function replaceItems(html, items) {
   let itemHtml = "";
@@ -50,12 +78,20 @@ async function handle(data, p, option) {
   }
   logger.info(`End replace item`);
 
-  const browser = await puppeteer.launch({
-    headless: "new",
-    executablePath: "/usr/bin/chromium-browser",
-    args:["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-  });
-  
+  const puppeteerOptions = getPuppeteerOptions();
+  logger.info(`Puppeteer options: ${JSON.stringify(puppeteerOptions, null, 2)}`);
+
+  let browser;
+  try {
+    browser = await puppeteer.launch(puppeteerOptions);
+    logger.info(`Browser launched successfully`);
+  } catch (error) {
+    logger.error(`Failed to launch browser: ${error.message}`);
+    logger.error(`Error stack: ${error.stack}`);
+    logger.error(`Full error object: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+    throw error;
+  }
+
   logger.info(`Launch browser`);
   const page = await browser.newPage();
   
@@ -173,13 +209,22 @@ async function handles(dataList, p, contentTemplate, option) {
 
   // Insert the new divs into page-container
   htmlContent = htmlContent.replace('{bodyContent}', `${newDivs}`);
-  
+
   logger.info("End html generate");
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: "/usr/bin/chromium-browser",
-    args:["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-  });
+  const puppeteerOptions = getPuppeteerOptions();
+  logger.info(`Puppeteer options (handles): ${JSON.stringify(puppeteerOptions, null, 2)}`);
+
+  let browser;
+  try {
+    browser = await puppeteer.launch(puppeteerOptions);
+    logger.info(`Browser launched successfully (handles)`);
+  } catch (error) {
+    logger.error(`Failed to launch browser (handles): ${error.message}`);
+    logger.error(`Error stack: ${error.stack}`);
+    logger.error(`Full error object: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+    throw error;
+  }
+
   logger.info(`open browser`);
   const page = await browser.newPage();
   await page.setContent(htmlContent);
@@ -323,13 +368,22 @@ async function getPdfByts(dataList, p, contentTemplate, option, type) {
 
   // Insert the new divs into page-container
   htmlContent = htmlContent.replace('{bodyContent}', `${newDivs}`);
-  
+
   logger.info("End html generate");
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: "/usr/bin/chromium-browser",
-    args:["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-  });
+  const puppeteerOptions = getPuppeteerOptions();
+  logger.info(`Puppeteer options (getPdfByts): ${JSON.stringify(puppeteerOptions, null, 2)}`);
+
+  let browser;
+  try {
+    browser = await puppeteer.launch(puppeteerOptions);
+    logger.info(`Browser launched successfully (getPdfByts)`);
+  } catch (error) {
+    logger.error(`Failed to launch browser (getPdfByts): ${error.message}`);
+    logger.error(`Error stack: ${error.stack}`);
+    logger.error(`Full error object: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+    throw error;
+  }
+
   logger.info(`open browser`);
   const page = await browser.newPage();
   //await page.setContent(htmlContent);

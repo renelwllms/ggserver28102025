@@ -2,7 +2,35 @@ const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
 const logger = require("../log/logger");
+const os = require("os");
 // Load the Word template
+
+// Helper function to get Puppeteer launch options
+function getPuppeteerOptions() {
+  const tmpDir = path.join(os.tmpdir(), 'puppeteer-chrome-' + Date.now());
+  return {
+    headless: true,
+    executablePath: "/home/epladmin/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-gpu-sandbox",
+      "--no-zygote",
+      "--disable-seccomp-filter-sandbox",
+      "--disable-namespace-sandbox",
+      "--disable-features=VizDisplayCompositor,NetworkService",
+      "--disable-background-networking",
+      "--disable-breakpad",
+      "--disable-component-extensions-with-background-pages",
+      "--js-flags=--max-old-space-size=512",
+      `--user-data-dir=${tmpDir}`
+    ],
+    ignoreDefaultArgs: ['--disable-extensions']
+  };
+}
 
 async function asyncMap(array, asyncCallback) {
   const promises = array.map(async (item, index) => {
@@ -75,10 +103,7 @@ async function handleRemoteLerner(data, option) {
   };
   logger.info("end page generate dataList");
   logger.info("End html generate");
-  const browser = await puppeteer.launch({
-    headless: true,
-    args:["--no-sandbox", "--disable-setuid-sandbox"]
-  });
+  const browser = await puppeteer.launch(getPuppeteerOptions());
   logger.info(`open browser`);
   const page = await browser.newPage();
   await page.setContent(htmlContent);
@@ -204,10 +229,7 @@ async function handleWorkshopResult(data, option) {
   };
   logger.info("end page generate dataList");
   logger.info("End html generate");
-  const browser = await puppeteer.launch({
-    headless: true,
-    args:["--no-sandbox", "--disable-setuid-sandbox"]
-  });
+  const browser = await puppeteer.launch(getPuppeteerOptions());
   logger.info(`open browser`);
   const page = await browser.newPage();
   await page.setContent(htmlContent);

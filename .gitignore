@@ -71,6 +71,9 @@ CLAUDE.md
 !package.json
 !package-lock.json
 /*.bak
+*.backup
+ecosystem.config.js.backup
+generateCertificate/index.js.backup
 
 # Generated certificates (test files)
 /generateCertificate/*.pdf
@@ -94,3 +97,5 @@ undo-data-*.json
 
 # Log files
 logs/
+log/
+*.log

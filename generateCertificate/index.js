@@ -52,8 +52,14 @@ async function handle(data, p, option) {
 
   const browser = await puppeteer.launch({
     headless: "new",
-    executablePath: "/usr/bin/chromium-browser",
-    args:["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    args:[
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-features=VizDisplayCompositor"
+    ]
   });
   
   logger.info(`Launch browser`);
@@ -177,8 +183,14 @@ async function handles(dataList, p, contentTemplate, option) {
   logger.info("End html generate");
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: "/usr/bin/chromium-browser",
-    args:["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    args:[
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-features=VizDisplayCompositor"
+    ]
   });
   logger.info(`open browser`);
   const page = await browser.newPage();
@@ -327,8 +339,14 @@ async function getPdfByts(dataList, p, contentTemplate, option, type) {
   logger.info("End html generate");
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: "/usr/bin/chromium-browser",
-    args:["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    args:[
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-features=VizDisplayCompositor"
+    ]
   });
   logger.info(`open browser`);
   const page = await browser.newPage();

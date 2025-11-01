@@ -77,7 +77,14 @@ async function handleRemoteLerner(data, option) {
   logger.info("End html generate");
   const browser = await puppeteer.launch({
     headless: true,
-    args:["--no-sandbox", "--disable-setuid-sandbox"]
+    args:[
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-features=VizDisplayCompositor"
+    ]
   });
   logger.info(`open browser`);
   const page = await browser.newPage();
@@ -206,7 +213,14 @@ async function handleWorkshopResult(data, option) {
   logger.info("End html generate");
   const browser = await puppeteer.launch({
     headless: true,
-    args:["--no-sandbox", "--disable-setuid-sandbox"]
+    args:[
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-features=VizDisplayCompositor"
+    ]
   });
   logger.info(`open browser`);
   const page = await browser.newPage();

@@ -824,11 +824,12 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
     // Handle multi-select filters
     if (schools) {
       const schoolList = schools.split(',').map(s => s.trim()).filter(s => s);
+      console.log('Filtering by schools:', schoolList);
       if (schoolList.length > 0) {
         const schoolConditions = schoolList.map((school, idx) => {
           const paramName = `School${idx}`;
           request.input(paramName, sql.VarChar, school);
-          return `School = @${paramName}`;
+          return `LOWER(RTRIM(LTRIM(School))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${schoolConditions.join(' OR ')})`);
       }
@@ -836,11 +837,12 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
 
     if (tutors) {
       const tutorList = tutors.split(',').map(t => t.trim()).filter(t => t);
+      console.log('Filtering by tutors:', tutorList);
       if (tutorList.length > 0) {
         const tutorConditions = tutorList.map((tutor, idx) => {
           const paramName = `Tutor${idx}`;
           request.input(paramName, sql.VarChar, tutor);
-          return `Tutor = @${paramName}`;
+          return `LOWER(RTRIM(LTRIM(Tutor))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${tutorConditions.join(' OR ')})`);
       }
@@ -848,11 +850,12 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
 
     if (regions) {
       const regionList = regions.split(',').map(r => r.trim()).filter(r => r);
+      console.log('Filtering by regions:', regionList);
       if (regionList.length > 0) {
         const regionConditions = regionList.map((region, idx) => {
           const paramName = `Region${idx}`;
           request.input(paramName, sql.VarChar, region);
-          return `Region = @${paramName}`;
+          return `LOWER(RTRIM(LTRIM(Region))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${regionConditions.join(' OR ')})`);
       }
@@ -860,11 +863,12 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
 
     if (ethnicities) {
       const ethnicityList = ethnicities.split(',').map(e => e.trim()).filter(e => e);
+      console.log('Filtering by ethnicities:', ethnicityList);
       if (ethnicityList.length > 0) {
         const ethnicityConditions = ethnicityList.map((ethnicity, idx) => {
           const paramName = `Ethnicity${idx}`;
           request.input(paramName, sql.VarChar, ethnicity);
-          return `Ethnicity = @${paramName}`;
+          return `LOWER(RTRIM(LTRIM(Ethnicity))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${ethnicityConditions.join(' OR ')})`);
       }
@@ -880,7 +884,12 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
       ORDER BY CreateDate DESC
     `;
 
+    console.log('Report7 SQL Query:', query);
+    console.log('WHERE clause:', whereClause);
+
     const result = await request.query(query);
+
+    console.log(`Report7 returned ${result.recordset.length} records`);
 
     res.send({
       code: 0,

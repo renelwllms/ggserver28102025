@@ -764,7 +764,7 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
     const request = await pool.request();
 
     // Get parameters
-    const { fields, startYear, endYear, status, assignedTo } = req.query;
+    const { fields, startYear, endYear, status, assignedTo, schools, tutors, regions, ethnicities } = req.query;
 
     // Validate fields parameter
     if (!fields) {
@@ -819,6 +819,55 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
     if (assignedTo) {
       request.input("AssignedTo", sql.VarChar, assignedTo);
       whereConditions.push('AssignedTo = @AssignedTo');
+    }
+
+    // Handle multi-select filters
+    if (schools) {
+      const schoolList = schools.split(',').map(s => s.trim()).filter(s => s);
+      if (schoolList.length > 0) {
+        const schoolConditions = schoolList.map((school, idx) => {
+          const paramName = `School${idx}`;
+          request.input(paramName, sql.VarChar, school);
+          return `School = @${paramName}`;
+        });
+        whereConditions.push(`(${schoolConditions.join(' OR ')})`);
+      }
+    }
+
+    if (tutors) {
+      const tutorList = tutors.split(',').map(t => t.trim()).filter(t => t);
+      if (tutorList.length > 0) {
+        const tutorConditions = tutorList.map((tutor, idx) => {
+          const paramName = `Tutor${idx}`;
+          request.input(paramName, sql.VarChar, tutor);
+          return `Tutor = @${paramName}`;
+        });
+        whereConditions.push(`(${tutorConditions.join(' OR ')})`);
+      }
+    }
+
+    if (regions) {
+      const regionList = regions.split(',').map(r => r.trim()).filter(r => r);
+      if (regionList.length > 0) {
+        const regionConditions = regionList.map((region, idx) => {
+          const paramName = `Region${idx}`;
+          request.input(paramName, sql.VarChar, region);
+          return `Region = @${paramName}`;
+        });
+        whereConditions.push(`(${regionConditions.join(' OR ')})`);
+      }
+    }
+
+    if (ethnicities) {
+      const ethnicityList = ethnicities.split(',').map(e => e.trim()).filter(e => e);
+      if (ethnicityList.length > 0) {
+        const ethnicityConditions = ethnicityList.map((ethnicity, idx) => {
+          const paramName = `Ethnicity${idx}`;
+          request.input(paramName, sql.VarChar, ethnicity);
+          return `Ethnicity = @${paramName}`;
+        });
+        whereConditions.push(`(${ethnicityConditions.join(' OR ')})`);
+      }
     }
 
     const whereClause = whereConditions.join(' AND ');

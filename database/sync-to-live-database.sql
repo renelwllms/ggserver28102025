@@ -1,7 +1,7 @@
 -- ================================================================
 -- LIVE DATABASE SYNC SCRIPT
 -- Generated: 2025-11-02
--- Target Database: ggdbtemp02 on 114.23.127.1
+-- Target Database: ggdbmain01 on 114.23.127.1
 -- ================================================================
 -- This script consolidates all local development database changes
 -- that need to be applied to the live production database.
@@ -10,7 +10,7 @@
 -- Backup your database before applying changes.
 -- ================================================================
 
-USE [ggdbtemp02];
+USE [ggdbmain01];
 GO
 
 PRINT '========================================';

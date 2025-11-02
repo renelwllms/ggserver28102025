@@ -37,7 +37,7 @@ router.get("/Alllist", isAuthenticated, async function (req, res, next) {
     const pool = await getPool();
     const request = await pool.request();
 
-    let query = `SELECT Id, DeliverySpecialist, MarkAsDefault, UserId FROM tblDeliverySpecialist 
+    let query = `SELECT Id, DeliverySpecialist, MarkAsDefault, UserId FROM tblDeliverySpecialist
     WHERE DeliverySpecialistActive = 1 `;
 
     const DeliverySpecialist = req.query.DeliverySpecialist;
@@ -47,10 +47,14 @@ router.get("/Alllist", isAuthenticated, async function (req, res, next) {
       query += ` AND DeliverySpecialist Like @TeacherName`;
     }
 
+    console.log('Tutor Alllist query:', query);
+
     request.query(query, (err, result) => {
-      if (err) console.log(err);
+      if (err) console.log('Tutor Alllist error:', err);
       if (result?.recordset) {
         const d = result.recordsets[0] || [];
+        console.log('Tutor Alllist returned', d.length, 'records');
+        console.log('First 3 tutors:', d.slice(0, 3));
 
         return res.send({
           code: 0,

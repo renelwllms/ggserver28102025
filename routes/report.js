@@ -783,7 +783,10 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
       'DateOfBirth', 'Gender', 'Ethnicity', 'School', 'SchoolNumber',
       'Tutor', 'Status', 'AssignedTo', 'Fees', 'Region', 'City',
       'StreetAddress', 'Zipcode', 'CreateDate', 'WorkbookOption',
-      'TeacherName', 'TeacherEmail', 'InvoiceEmail'
+      'TeacherName', 'TeacherEmail', 'InvoiceEmail',
+      // Course enrollment fields
+      'CourseName', 'CourseLevel', 'CourseCredits', 'CourseType',
+      'CourseStatus', 'EnrollmentDate', 'LearnerType'
     ];
 
     const invalidFields = selectedFields.filter(f => !allowedFields.includes(f));
@@ -794,11 +797,28 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
       });
     }
 
-    // Build the SELECT clause with selected fields
-    const selectClause = selectedFields.join(', ');
+    // Build the SELECT clause with selected fields and proper table aliases
+    const selectClause = selectedFields.map(field => {
+      // Map course enrollment fields to correct tables
+      if (['CourseName', 'CourseLevel', 'CourseCredits'].includes(field)) {
+        return `c.${field}`;
+      } else if (['CourseType', 'CourseStatus', 'LearnerType'].includes(field)) {
+        return `sic.${field}`;
+      } else if (field === 'EnrollmentDate') {
+        return 'sic.CreatDate as EnrollmentDate';
+      } else {
+        // Student info fields
+        return `s.${field}`;
+      }
+    }).join(', ');
+
+    // Determine if we need to join course tables
+    const needsCourseJoin = selectedFields.some(f =>
+      ['CourseName', 'CourseLevel', 'CourseCredits', 'CourseType', 'CourseStatus', 'EnrollmentDate', 'LearnerType'].includes(f)
+    );
 
     // Build WHERE clause based on filters
-    let whereConditions = ['(IsDeleted IS NULL OR IsDeleted = 0)'];
+    let whereConditions = ['(s.IsDeleted IS NULL OR s.IsDeleted = 0)'];
 
     if (startYear && endYear) {
       const start = parseInt(startYear);
@@ -808,17 +828,17 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
 
       request.input("StartDate", sql.DateTime2, startDate);
       request.input("EndDate", sql.DateTime2, endDate);
-      whereConditions.push('CreateDate >= @StartDate AND CreateDate < @EndDate');
+      whereConditions.push('s.CreateDate >= @StartDate AND s.CreateDate < @EndDate');
     }
 
     if (status) {
       request.input("Status", sql.VarChar, status);
-      whereConditions.push('Status = @Status');
+      whereConditions.push('s.Status = @Status');
     }
 
     if (assignedTo) {
       request.input("AssignedTo", sql.VarChar, assignedTo);
-      whereConditions.push('AssignedTo = @AssignedTo');
+      whereConditions.push('s.AssignedTo = @AssignedTo');
     }
 
     // Handle multi-select filters
@@ -829,7 +849,7 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
         const schoolConditions = schoolList.map((school, idx) => {
           const paramName = `School${idx}`;
           request.input(paramName, sql.VarChar, school);
-          return `LOWER(RTRIM(LTRIM(School))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
+          return `LOWER(RTRIM(LTRIM(s.School))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${schoolConditions.join(' OR ')})`);
       }
@@ -842,7 +862,7 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
         const tutorConditions = tutorList.map((tutor, idx) => {
           const paramName = `Tutor${idx}`;
           request.input(paramName, sql.VarChar, tutor);
-          return `LOWER(RTRIM(LTRIM(Tutor))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
+          return `LOWER(RTRIM(LTRIM(s.Tutor))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${tutorConditions.join(' OR ')})`);
       }
@@ -855,7 +875,7 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
         const regionConditions = regionList.map((region, idx) => {
           const paramName = `Region${idx}`;
           request.input(paramName, sql.VarChar, region);
-          return `LOWER(RTRIM(LTRIM(Region))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
+          return `LOWER(RTRIM(LTRIM(s.Region))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${regionConditions.join(' OR ')})`);
       }
@@ -868,21 +888,88 @@ router.get("/report7", isAuthenticated, async function (req, res, next) {
         const ethnicityConditions = ethnicityList.map((ethnicity, idx) => {
           const paramName = `Ethnicity${idx}`;
           request.input(paramName, sql.VarChar, ethnicity);
-          return `LOWER(RTRIM(LTRIM(Ethnicity))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
+          return `LOWER(RTRIM(LTRIM(s.Ethnicity))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
         });
         whereConditions.push(`(${ethnicityConditions.join(' OR ')})`);
       }
     }
 
+    // New course-related filters
+    const { courseNames, courseTypes, courseStatuses, courseLevels } = req.query;
+
+    if (courseNames) {
+      const courseNameList = courseNames.split(',').map(cn => cn.trim()).filter(cn => cn);
+      console.log('Filtering by course names:', courseNameList);
+      if (courseNameList.length > 0) {
+        const courseNameConditions = courseNameList.map((courseName, idx) => {
+          const paramName = `CourseName${idx}`;
+          request.input(paramName, sql.VarChar, courseName);
+          return `LOWER(RTRIM(LTRIM(c.CourseName))) = LOWER(RTRIM(LTRIM(@${paramName})))`;
+        });
+        whereConditions.push(`(${courseNameConditions.join(' OR ')})`);
+      }
+    }
+
+    if (courseTypes) {
+      const courseTypeList = courseTypes.split(',').map(ct => ct.trim()).filter(ct => ct);
+      console.log('Filtering by course types:', courseTypeList);
+      if (courseTypeList.length > 0) {
+        const courseTypeConditions = courseTypeList.map((courseType, idx) => {
+          const paramName = `CourseType${idx}`;
+          request.input(paramName, sql.VarChar, courseType);
+          return `sic.CourseType = @${paramName}`;
+        });
+        whereConditions.push(`(${courseTypeConditions.join(' OR ')})`);
+      }
+    }
+
+    if (courseStatuses) {
+      const courseStatusList = courseStatuses.split(',').map(cs => cs.trim()).filter(cs => cs);
+      console.log('Filtering by course statuses:', courseStatusList);
+      if (courseStatusList.length > 0) {
+        const courseStatusConditions = courseStatusList.map((courseStatus, idx) => {
+          const paramName = `CourseStatus${idx}`;
+          request.input(paramName, sql.VarChar, courseStatus);
+          return `sic.CourseStatus = @${paramName}`;
+        });
+        whereConditions.push(`(${courseStatusConditions.join(' OR ')})`);
+      }
+    }
+
+    if (courseLevels) {
+      const courseLevelList = courseLevels.split(',').map(cl => cl.trim()).filter(cl => cl);
+      console.log('Filtering by course levels:', courseLevelList);
+      if (courseLevelList.length > 0) {
+        const courseLevelConditions = courseLevelList.map((courseLevel, idx) => {
+          const paramName = `CourseLevel${idx}`;
+          request.input(paramName, sql.Int, parseInt(courseLevel));
+          return `c.CourseLevel = @${paramName}`;
+        });
+        whereConditions.push(`(${courseLevelConditions.join(' OR ')})`);
+      }
+    }
+
     const whereClause = whereConditions.join(' AND ');
 
-    // Build and execute the query
-    const query = `
-      SELECT ${selectClause}
-      FROM tblStudentInfo
-      WHERE ${whereClause}
-      ORDER BY CreateDate DESC
-    `;
+    // Build and execute the query with conditional JOINs
+    let query;
+    if (needsCourseJoin) {
+      query = `
+        SELECT ${selectClause}
+        FROM tblStudentInfo s
+        LEFT JOIN tblStudentInCourse sic ON s.StudentID = sic.StudentID
+        LEFT JOIN tblCourse c ON sic.CourseID = c.CourseID
+        WHERE ${whereClause}
+        ORDER BY s.StudentID, sic.CreatDate DESC
+      `;
+    } else {
+      query = `
+        SELECT ${selectClause}
+        FROM tblStudentInfo s
+        WHERE ${whereClause}
+        ORDER BY s.CreateDate DESC
+      `;
+    }
 
     console.log('Report7 SQL Query:', query);
     console.log('WHERE clause:', whereClause);

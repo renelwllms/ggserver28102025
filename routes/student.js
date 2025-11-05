@@ -2374,17 +2374,29 @@ router.post("/remoteRegister", async function (req, res, next) {
         DECLARE @StudentID INT = @ExistingStudentID;
         DECLARE @SICId INT = 0;
         DECLARE @EnrolledCount INT = 0;
+        DECLARE @DefaultTutorId INT = NULL;
+        DECLARE @DefaultTutorName NVARCHAR(255) = NULL;
+
+        -- Get the default teacher (marked as default in tblDeliverySpecialist)
+        SELECT TOP 1 @DefaultTutorId = Id, @DefaultTutorName = DeliverySpecialist
+        FROM tblDeliverySpecialist
+        WHERE MarkAsDefault = 1;
+
+        PRINT 'Default Teacher ID: ' + ISNULL(CAST(@DefaultTutorId AS VARCHAR), 'NULL');
+        PRINT 'Default Teacher Name: ' + ISNULL(@DefaultTutorName, 'NULL');
 
         -- If ExistingStudentID is provided, use that existing student record
         -- Otherwise, create a new student record
         IF (@StudentID = 0)
         BEGIN
           -- Insert new remote learner (Code is NULL for remote learners)
+          -- Automatically assign to the default teacher
         INSERT INTO tblStudentInfo (
           FirstName, LastName, DateOfBirth, Gender, Ethnicity, PhoneNumber,
           Email, School, SchoolNumber, TeacherName, TeacherEmail, InvoiceEmail, WorkbookOption,
           StreetAddress, City, Region, Zipcode, AdditionalInfo, CreateDate,
-          isAdd, Status, NZQAInfo, WorklifeCourses, FarmingUnits
+          isAdd, Status, NZQAInfo, WorklifeCourses, FarmingUnits,
+          TutorId, Tutor
         )
         VALUES (
           @FirstName, @LastName, @DateOfBirth, @Gender, @Ethnicity, @PhoneNumber,
@@ -2392,11 +2404,13 @@ router.post("/remoteRegister", async function (req, res, next) {
           @StreetAddress, @City, @Region, @Zipcode, @AdditionalInfo, @CreateDate,
           0, 'Pending', @NZQAPreference,
           CASE WHEN @CourseCategory = 'Work & Life Skills' THEN @SelectedCourses ELSE NULL END,
-          CASE WHEN @CourseCategory = 'Farming & Horticulture' THEN @SelectedCourses ELSE NULL END
+          CASE WHEN @CourseCategory = 'Farming & Horticulture' THEN @SelectedCourses ELSE NULL END,
+          @DefaultTutorId, @DefaultTutorName
         )
           SELECT @StudentID = @@IDENTITY;
 
           PRINT 'New student created with ID: ' + CAST(@StudentID AS VARCHAR);
+          PRINT 'Assigned to default teacher: ' + ISNULL(@DefaultTutorName, 'NULL');
         END
         ELSE
         BEGIN

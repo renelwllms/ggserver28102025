@@ -639,30 +639,30 @@ router.get("/unitStandardsWithCategories", isAuthenticated, async (req, res, nex
   }
 });
 
-// Admin endpoint: Get category notification settings
+// Admin endpoint: Get notification settings
 router.get("/getCategoryNotificationSettings", isAuthenticated, async (req, res, next) => {
   try {
     const pool = await getPool();
     const request = pool.request();
 
     const query = `
-      SELECT CategoryName, NotificationEmail
-      FROM tblRemoteRegistrationCategorySettings
-      ORDER BY CategoryName
+      SELECT SettingValue AS NotificationEmail
+      FROM tblRemoteRegistrationSettings
+      WHERE SettingKey = 'NotificationEmail'
     `;
 
     const result = await request.query(query);
 
-    res.send({ code: 0, data: result.recordset || [] });
+    res.send({ code: 0, data: result.recordset[0] || { NotificationEmail: null } });
   } catch (error) {
-    console.error("Error getting category notification settings:", error);
+    console.error("Error getting notification settings:", error);
 
     // Check if the error is due to table not existing
     if (error.message && error.message.includes('Invalid object name')) {
       return res.send({
         code: 1,
         message: "Database table not found. Please run the SQL script: server_V1.1-main/server_V1.1-main/database/add_category_notification_emails.sql",
-        data: []
+        data: { NotificationEmail: null }
       });
     }
 
@@ -670,23 +670,22 @@ router.get("/getCategoryNotificationSettings", isAuthenticated, async (req, res,
   }
 });
 
-// Admin endpoint: Update category notification email
+// Admin endpoint: Update notification email
 router.put("/updateCategoryNotificationEmail", isAuthenticated, async (req, res, next) => {
-  const { CategoryName, NotificationEmail } = req.body;
+  const { NotificationEmail } = req.body;
 
   try {
     const pool = await getPool();
     const request = pool.request();
 
     const query = `
-      UPDATE tblRemoteRegistrationCategorySettings
-      SET NotificationEmail = @NotificationEmail,
+      UPDATE tblRemoteRegistrationSettings
+      SET SettingValue = @NotificationEmail,
           UpdatedDate = GETDATE(),
           UpdatedBy = @UpdatedBy
-      WHERE CategoryName = @CategoryName
+      WHERE SettingKey = 'NotificationEmail'
     `;
 
-    request.input("CategoryName", sql.VarChar, CategoryName);
     request.input("NotificationEmail", sql.VarChar, NotificationEmail);
     request.input("UpdatedBy", sql.VarChar, req?.info?.displayName);
 
@@ -694,7 +693,7 @@ router.put("/updateCategoryNotificationEmail", isAuthenticated, async (req, res,
 
     res.send({ code: 0, data: true, message: "Notification email updated successfully" });
   } catch (error) {
-    console.error("Error updating category notification email:", error);
+    console.error("Error updating notification email:", error);
     next(error);
   }
 });

@@ -2550,28 +2550,18 @@ router.post("/remoteRegister", async function (req, res, next) {
     if (studentID) {
       // Send ONE comprehensive notification email with all selected courses from both pathways
       try {
-        // Collect all notification email addresses from selected categories
-        const notificationEmails = new Set();
+        // Get global notification email setting
+        const notifRequest = await pool.request();
+        const notifQuery = `
+          SELECT SettingValue AS NotificationEmail
+          FROM tblRemoteRegistrationSettings
+          WHERE SettingKey = 'NotificationEmail' AND SettingValue IS NOT NULL
+        `;
+        const notifResult = await notifRequest.query(notifQuery);
+        const notificationEmail = notifResult.recordset[0]?.NotificationEmail;
 
-        if (CourseCategories && CourseCategories.length > 0) {
-          for (const category of CourseCategories) {
-            const notifRequest = await pool.request();
-            notifRequest.input("CategoryName", sql.VarChar, category);
-            const notifQuery = `
-              SELECT NotificationEmail
-              FROM tblRemoteRegistrationCategorySettings
-              WHERE CategoryName = @CategoryName AND NotificationEmail IS NOT NULL
-            `;
-            const notifResult = await notifRequest.query(notifQuery);
-            const email = notifResult.recordset[0]?.NotificationEmail;
-            if (email) {
-              notificationEmails.add(email);
-            }
-          }
-        }
-
-        if (notificationEmails.size > 0) {
-          console.log(`Sending comprehensive notification to: ${Array.from(notificationEmails).join(', ')}`);
+        if (notificationEmail) {
+          console.log(`Sending comprehensive notification to: ${notificationEmail}`);
 
           // Fetch Work & Life Skills course details
           let workLifeCoursesHtml = '';
@@ -2662,36 +2652,34 @@ router.post("/remoteRegister", async function (req, res, next) {
             <p><em>This is an automated notification from the LMS Remote Registration system.</em></p>
           `;
 
-          // Send email to all configured notification addresses
-          for (const notificationEmail of notificationEmails) {
-            const mailOptions = {
-              message: {
-                subject: emailSubject,
-                body: {
-                  contentType: "HTML",
-                  content: emailBody,
-                },
-                toRecipients: [
-                  {
-                    emailAddress: {
-                      address: notificationEmail,
-                    },
+          // Send email to the configured notification address
+          const mailOptions = {
+            message: {
+              subject: emailSubject,
+              body: {
+                contentType: "HTML",
+                content: emailBody,
+              },
+              toRecipients: [
+                {
+                  emailAddress: {
+                    address: notificationEmail,
                   },
-                ],
-              },
-            };
+                },
+              ],
+            },
+          };
 
-            await axios.post(sendMailUrl, mailOptions, {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-              },
-            });
+          await axios.post(sendMailUrl, mailOptions, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+          });
 
-            console.log(`Notification email sent successfully to ${notificationEmail}`);
-          }
+          console.log(`Notification email sent successfully to ${notificationEmail}`);
         } else {
-          console.log('No notification emails configured for selected categories');
+          console.log('No notification email configured');
         }
       } catch (emailError) {
         console.error('Error sending notification email:', emailError);

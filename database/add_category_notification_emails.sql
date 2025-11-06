@@ -1,76 +1,76 @@
 -- =============================================
 -- Remote Registration Notification Email Setup
 -- =============================================
--- This script creates the table for storing notification email settings
--- for remote learner registrations.
+-- This script creates the table for storing a single global notification
+-- email address for remote learner registrations.
 --
--- Note: Both categories ('Work & Life Skills' and 'Farming & Horticulture')
--- should be configured with the SAME email address, as the system sends
--- ONE comprehensive notification containing all courses from both pathways.
+-- The system sends ONE comprehensive notification containing all courses
+-- from all categories (Work & Life Skills and Farming & Horticulture).
 -- =============================================
 
--- Create table for storing notification emails for remote registration categories
-IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tblRemoteRegistrationCategorySettings]') AND type in (N'U'))
+-- Create table for storing global notification email for remote registrations
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tblRemoteRegistrationSettings]') AND type in (N'U'))
 BEGIN
-    CREATE TABLE [dbo].[tblRemoteRegistrationCategorySettings] (
-        [CategoryName] NVARCHAR(100) PRIMARY KEY,
-        [NotificationEmail] NVARCHAR(255) NULL
+    CREATE TABLE [dbo].[tblRemoteRegistrationSettings] (
+        [SettingKey] NVARCHAR(50) PRIMARY KEY,
+        [SettingValue] NVARCHAR(500) NULL,
+        [Description] NVARCHAR(255) NULL,
+        [UpdatedDate] DATETIME DEFAULT GETDATE(),
+        [UpdatedBy] NVARCHAR(100) NULL
     );
 
-    -- Insert default rows for the two categories
-    -- Note: Configure both with the same email address in the admin UI
-    INSERT INTO [dbo].[tblRemoteRegistrationCategorySettings] ([CategoryName], [NotificationEmail])
-    VALUES
-        ('Work & Life Skills', NULL),
-        ('Farming & Horticulture', NULL);
+    -- Insert the notification email setting
+    INSERT INTO [dbo].[tblRemoteRegistrationSettings] ([SettingKey], [SettingValue], [Description])
+    VALUES ('NotificationEmail', NULL, 'Email address to receive remote registration notifications');
 
-    PRINT 'Table tblRemoteRegistrationCategorySettings created and initialized successfully';
+    PRINT 'Table tblRemoteRegistrationSettings created and initialized successfully';
     PRINT 'Please configure the notification email address in: Settings > Remote Registration Categories';
 END
 ELSE
 BEGIN
-    PRINT 'Table tblRemoteRegistrationCategorySettings already exists';
+    PRINT 'Table tblRemoteRegistrationSettings already exists';
 
-    -- Ensure both category rows exist
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[tblRemoteRegistrationCategorySettings] WHERE [CategoryName] = 'Work & Life Skills')
+    -- Ensure the notification email setting exists
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[tblRemoteRegistrationSettings] WHERE [SettingKey] = 'NotificationEmail')
     BEGIN
-        INSERT INTO [dbo].[tblRemoteRegistrationCategorySettings] ([CategoryName], [NotificationEmail])
-        VALUES ('Work & Life Skills', NULL);
-        PRINT 'Added missing category: Work & Life Skills';
+        INSERT INTO [dbo].[tblRemoteRegistrationSettings] ([SettingKey], [SettingValue], [Description])
+        VALUES ('NotificationEmail', NULL, 'Email address to receive remote registration notifications');
+        PRINT 'Added missing setting: NotificationEmail';
+    END
+END
+GO
+
+-- Drop old table if it exists (migration from old schema)
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tblRemoteRegistrationCategorySettings]') AND type in (N'U'))
+BEGIN
+    -- Migrate data if there was an email configured in the old table
+    DECLARE @OldEmail NVARCHAR(255);
+
+    SELECT TOP 1 @OldEmail = [NotificationEmail]
+    FROM [dbo].[tblRemoteRegistrationCategorySettings]
+    WHERE [NotificationEmail] IS NOT NULL;
+
+    IF @OldEmail IS NOT NULL
+    BEGIN
+        UPDATE [dbo].[tblRemoteRegistrationSettings]
+        SET [SettingValue] = @OldEmail
+        WHERE [SettingKey] = 'NotificationEmail';
+
+        PRINT 'Migrated notification email from old table: ' + @OldEmail;
     END
 
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[tblRemoteRegistrationCategorySettings] WHERE [CategoryName] = 'Farming & Horticulture')
-    BEGIN
-        INSERT INTO [dbo].[tblRemoteRegistrationCategorySettings] ([CategoryName], [NotificationEmail])
-        VALUES ('Farming & Horticulture', NULL);
-        PRINT 'Added missing category: Farming & Horticulture';
-    END
-
-    -- Remove unused audit columns if they exist (from previous version)
-    IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tblRemoteRegistrationCategorySettings]') AND name = 'CreatedDate')
-    BEGIN
-        ALTER TABLE [dbo].[tblRemoteRegistrationCategorySettings] DROP COLUMN [CreatedDate];
-        PRINT 'Removed unused column: CreatedDate';
-    END
-
-    IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tblRemoteRegistrationCategorySettings]') AND name = 'UpdatedDate')
-    BEGIN
-        ALTER TABLE [dbo].[tblRemoteRegistrationCategorySettings] DROP COLUMN [UpdatedDate];
-        PRINT 'Removed unused column: UpdatedDate';
-    END
-
-    IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tblRemoteRegistrationCategorySettings]') AND name = 'UpdatedBy')
-    BEGIN
-        ALTER TABLE [dbo].[tblRemoteRegistrationCategorySettings] DROP COLUMN [UpdatedBy];
-        PRINT 'Removed unused column: UpdatedBy';
-    END
+    DROP TABLE [dbo].[tblRemoteRegistrationCategorySettings];
+    PRINT 'Old table tblRemoteRegistrationCategorySettings has been removed';
 END
 GO
 
 -- Display current configuration
 SELECT
-    [CategoryName],
-    ISNULL([NotificationEmail], 'Not Configured') AS [NotificationEmail]
-FROM [dbo].[tblRemoteRegistrationCategorySettings]
-ORDER BY [CategoryName];
+    [SettingKey],
+    ISNULL([SettingValue], 'Not Configured') AS [SettingValue],
+    [Description],
+    [UpdatedDate],
+    [UpdatedBy]
+FROM [dbo].[tblRemoteRegistrationSettings]
+WHERE [SettingKey] = 'NotificationEmail';
 GO

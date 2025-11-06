@@ -8,9 +8,8 @@ const os = require("os");
 // Helper function to get Puppeteer launch options
 function getPuppeteerOptions() {
   const tmpDir = path.join(os.tmpdir(), 'puppeteer-chrome-' + Date.now());
-  return {
+  const options = {
     headless: true,
-    executablePath: "/home/epladmin/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -30,6 +29,14 @@ function getPuppeteerOptions() {
     ],
     ignoreDefaultArgs: ['--disable-extensions']
   };
+
+  // Only set executablePath on Linux systems
+  if (os.platform() === 'linux') {
+    options.executablePath = "/home/epladmin/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome";
+  }
+  // On Windows, let Puppeteer find Chrome automatically
+
+  return options;
 }
 
 function replaceItems(html, items) {

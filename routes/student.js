@@ -2308,20 +2308,22 @@ router.post("/remoteRegister", async function (req, res, next) {
       Zipcode,
       NZQAPreference,
       AdditionalInfo,
-      CourseCategory, // "Work & Life Skills" or "Farming & Horticulture"
-      SelectedCourses, // Array of course IDs or unit standard IDs
+      CourseCategories, // Array: ["Work & Life Skills", "Farming & Horticulture"] or single item
+      SelectedWorkLifeCourses, // Array of course IDs for Work & Life Skills
+      SelectedFarmingUnits, // Array of unit standard IDs for Farming & Horticulture
       CustomCourse,
       Agreement,
       ExistingStudentID // If user selected "This Is Me" from duplicate modal
     } = req.body;
 
     console.log('Remote register - ExistingStudentID:', ExistingStudentID);
+    console.log('Remote register - CourseCategories:', CourseCategories);
 
     // Validation
-    if (!FirstName || !LastName || !Email || !CourseCategory) {
+    if (!FirstName || !LastName || !Email || !CourseCategories || CourseCategories.length === 0) {
       return res.send({
         code: 1,
-        message: "Required fields missing: FirstName, LastName, Email, CourseCategory"
+        message: "Required fields missing: FirstName, LastName, Email, CourseCategories"
       });
     }
 
@@ -2340,6 +2342,11 @@ router.post("/remoteRegister", async function (req, res, next) {
         formattedDOB = `${parts[2]}-${parts[1]}-${parts[0]}`; // Convert DD/MM/YYYY to YYYY-MM-DD
       }
     }
+
+    // Prepare data for each category
+    const WorkLifeCoursesJSON = JSON.stringify(SelectedWorkLifeCourses || []);
+    const FarmingUnitsJSON = JSON.stringify(SelectedFarmingUnits || []);
+    const categoriesStr = CourseCategories.join(', ');
 
     // Input parameters
     request.input("FirstName", sql.VarChar, FirstName);
@@ -2360,9 +2367,8 @@ router.post("/remoteRegister", async function (req, res, next) {
     request.input("Region", sql.VarChar, Region || "");
     request.input("Zipcode", sql.VarChar, Zipcode || "");
     request.input("AdditionalInfo", sql.VarChar, AdditionalInfo || "");
-    request.input("CourseCategory", sql.VarChar, CourseCategory);
-    request.input("SelectedCourses", sql.VarChar, JSON.stringify(SelectedCourses || []));
-    request.input("CustomCourse", sql.VarChar, CustomCourse || "");
+    request.input("WorkLifeCourses", sql.VarChar, WorkLifeCoursesJSON);
+    request.input("FarmingUnits", sql.VarChar, FarmingUnitsJSON);
     request.input("NZQAPreference", sql.VarChar, NZQAPreference || "");
     request.input("ExistingStudentID", sql.Int, ExistingStudentID || 0);
 
@@ -2403,8 +2409,8 @@ router.post("/remoteRegister", async function (req, res, next) {
           @Email, @School, @SchoolNumber, @TeacherName, @TeacherEmail, @InvoiceEmail, @WorkbookOption,
           @StreetAddress, @City, @Region, @Zipcode, @AdditionalInfo, @CreateDate,
           0, 'Pending', @NZQAPreference,
-          CASE WHEN @CourseCategory = 'Work & Life Skills' THEN @SelectedCourses ELSE NULL END,
-          CASE WHEN @CourseCategory = 'Farming & Horticulture' THEN @SelectedCourses ELSE NULL END,
+          @WorkLifeCourses,
+          @FarmingUnits,
           @DefaultTutorId, @DefaultTutorName
         )
           SELECT @StudentID = @@IDENTITY;
@@ -2417,11 +2423,11 @@ router.post("/remoteRegister", async function (req, res, next) {
           PRINT 'Using existing student ID: ' + CAST(@StudentID AS VARCHAR);
         END
 
-        PRINT 'Course Category: ' + @CourseCategory;
-        PRINT 'Selected Courses JSON: ' + @SelectedCourses;
+        PRINT 'Work Life Courses JSON: ' + @WorkLifeCourses;
+        PRINT 'Farming Units JSON: ' + @FarmingUnits;
 
-        -- Enroll student in selected courses
-        IF(@CourseCategory = 'Work & Life Skills' AND ISNULL(@SelectedCourses, '[]') != '[]')
+        -- Enroll student in Work & Life Skills courses
+        IF(ISNULL(@WorkLifeCourses, '[]') != '[]' AND @WorkLifeCourses != '[]')
         BEGIN
           PRINT 'Attempting to enroll in Work & Life Skills courses...';
 
@@ -2432,20 +2438,20 @@ router.post("/remoteRegister", async function (req, res, next) {
             CAST(value AS INT),
             1,
             3, -- Remote Learner type
-            @CourseCategory,
+            'Work & Life Skills',
             GETDATE(),
             GETDATE(),
             'Pending'
-          FROM OPENJSON(@SelectedCourses);
+          FROM OPENJSON(@WorkLifeCourses);
 
-          SET @EnrolledCount = @@ROWCOUNT;
-          PRINT 'Enrolled in ' + CAST(@EnrolledCount AS VARCHAR) + ' courses';
+          SET @EnrolledCount = @EnrolledCount + @@ROWCOUNT;
+          PRINT 'Enrolled in ' + CAST(@@ROWCOUNT AS VARCHAR) + ' Work & Life Skills courses';
 
           -- Get the inserted id for adding unit standards
           DECLARE course_cursor CURSOR FOR
             SELECT id, CourseID
             FROM tblStudentInCourse
-            WHERE StudentID = @StudentID AND CourseType = @CourseCategory;
+            WHERE StudentID = @StudentID AND CourseType = 'Work & Life Skills';
 
           DECLARE @CourseID INT;
           OPEN course_cursor;
@@ -2478,7 +2484,7 @@ router.post("/remoteRegister", async function (req, res, next) {
           DEALLOCATE course_cursor;
         END
 
-        IF(@CourseCategory = 'Farming & Horticulture' AND ISNULL(@SelectedCourses, '[]') != '[]')
+        IF(ISNULL(@FarmingUnits, '[]') != '[]' AND @FarmingUnits != '[]')
         BEGIN
           PRINT 'Attempting to enroll in Farming & Horticulture...';
 
@@ -2492,9 +2498,10 @@ router.post("/remoteRegister", async function (req, res, next) {
 
           -- Create student in course record
           INSERT INTO tblStudentInCourse (StudentID, CourseID, IsActive, LearnerType, CourseType, CreatDate, LastModifyDate, CourseStatus)
-          VALUES (@StudentID, @FarmingCourseID, 1, 3, @CourseCategory, GETDATE(), GETDATE(), 'Pending');
+          VALUES (@StudentID, @FarmingCourseID, 1, 3, 'Farming & Horticulture', GETDATE(), GETDATE(), 'Pending');
 
           SELECT @SICId = @@IDENTITY;
+          SET @EnrolledCount = @EnrolledCount + 1;
           PRINT 'Created SICId: ' + CAST(@SICId AS VARCHAR);
 
           -- Add selected unit standards
@@ -2509,7 +2516,7 @@ router.post("/remoteRegister", async function (req, res, next) {
             1,
             GETDATE(),
             GETDATE()
-          FROM OPENJSON(@SelectedCourses);
+          FROM OPENJSON(@FarmingUnits);
 
           PRINT 'Added ' + CAST(@@ROWCOUNT AS VARCHAR) + ' unit standards';
         END
@@ -2541,6 +2548,156 @@ router.post("/remoteRegister", async function (req, res, next) {
     console.log('Registration result:', { studentID, enrolledCount });
 
     if (studentID) {
+      // Send ONE comprehensive notification email with all selected courses from both pathways
+      try {
+        // Collect all notification email addresses from selected categories
+        const notificationEmails = new Set();
+
+        if (CourseCategories && CourseCategories.length > 0) {
+          for (const category of CourseCategories) {
+            const notifRequest = await pool.request();
+            notifRequest.input("CategoryName", sql.VarChar, category);
+            const notifQuery = `
+              SELECT NotificationEmail
+              FROM tblRemoteRegistrationCategorySettings
+              WHERE CategoryName = @CategoryName AND NotificationEmail IS NOT NULL
+            `;
+            const notifResult = await notifRequest.query(notifQuery);
+            const email = notifResult.recordset[0]?.NotificationEmail;
+            if (email) {
+              notificationEmails.add(email);
+            }
+          }
+        }
+
+        if (notificationEmails.size > 0) {
+          console.log(`Sending comprehensive notification to: ${Array.from(notificationEmails).join(', ')}`);
+
+          // Fetch Work & Life Skills course details
+          let workLifeCoursesHtml = '';
+          if (SelectedWorkLifeCourses && SelectedWorkLifeCourses.length > 0) {
+            const courseRequest = await pool.request();
+            const courseIdsStr = SelectedWorkLifeCourses.join(',');
+            const courseQuery = `
+              SELECT CourseID, CourseName, CourseCredits
+              FROM tblCourse
+              WHERE CourseID IN (${courseIdsStr})
+            `;
+            const courseResult = await courseRequest.query(courseQuery);
+            const courses = courseResult.recordset || [];
+
+            if (courses.length > 0) {
+              workLifeCoursesHtml = '<h4>Work & Life Skills Courses:</h4><ul>';
+              courses.forEach(course => {
+                workLifeCoursesHtml += `<li><strong>${course.CourseName}</strong> (${course.CourseCredits || 0} credits)</li>`;
+              });
+              workLifeCoursesHtml += '</ul>';
+            }
+          }
+
+          // Fetch Farming & Horticulture unit standard details
+          let farmingUnitsHtml = '';
+          if (SelectedFarmingUnits && SelectedFarmingUnits.length > 0) {
+            const unitRequest = await pool.request();
+            const unitIdsStr = SelectedFarmingUnits.join(',');
+            const unitQuery = `
+              SELECT UnitStandardID, US, USName, USCredits
+              FROM tblUnitStandard
+              WHERE UnitStandardID IN (${unitIdsStr})
+            `;
+            const unitResult = await unitRequest.query(unitQuery);
+            const units = unitResult.recordset || [];
+
+            if (units.length > 0) {
+              farmingUnitsHtml = '<h4>Farming & Horticulture Unit Standards:</h4><ul>';
+              units.forEach(unit => {
+                farmingUnitsHtml += `<li><strong>${unit.US} - ${unit.USName}</strong> (${unit.USCredits || 0} credits)</li>`;
+              });
+              farmingUnitsHtml += '</ul>';
+            }
+          }
+
+          // Build comprehensive course list HTML
+          let coursesListHtml = '';
+          if (workLifeCoursesHtml || farmingUnitsHtml) {
+            coursesListHtml = '<h3>Selected Courses and Unit Standards:</h3>';
+            coursesListHtml += workLifeCoursesHtml;
+            coursesListHtml += farmingUnitsHtml;
+          }
+
+          const categoriesStr = CourseCategories ? CourseCategories.join(' & ') : 'Remote Registration';
+
+          // Send notification email using Microsoft Graph API
+          const accessToken = await getToken();
+          const emailSubject = `New Remote Registration: ${FirstName} ${LastName} - ${categoriesStr}`;
+          const emailBody = `
+            <h3>New Remote Learner Registration</h3>
+            <p>A new student has registered through the remote registration page.</p>
+            <hr />
+            <h4>Student Information:</h4>
+            <ul>
+              <li><strong>Name:</strong> ${FirstName} ${LastName}</li>
+              <li><strong>Email:</strong> ${Email}</li>
+              <li><strong>Phone:</strong> ${PhoneNumber || 'Not provided'}</li>
+              <li><strong>School:</strong> ${School || 'Not provided'}</li>
+              <li><strong>Date of Birth:</strong> ${formattedDOB || 'Not provided'}</li>
+            </ul>
+            <h4>Registration Details:</h4>
+            <ul>
+              <li><strong>Pathways:</strong> ${categoriesStr}</li>
+              <li><strong>Total Courses Enrolled:</strong> ${enrolledCount || 0}</li>
+              <li><strong>Student ID:</strong> ${studentID}</li>
+              <li><strong>Workbook Option:</strong> ${WorkbookOption || 'Not specified'}</li>
+              <li><strong>NZQA Preference:</strong> ${NZQAPreference || 'Not specified'}</li>
+            </ul>
+            ${coursesListHtml}
+            <h4>Contact Information:</h4>
+            <ul>
+              <li><strong>Teacher Name:</strong> ${TeacherName || 'Not provided'}</li>
+              <li><strong>Teacher Email:</strong> ${TeacherEmail || 'Not provided'}</li>
+              <li><strong>Invoice Email:</strong> ${InvoiceEmail || 'Not provided'}</li>
+            </ul>
+            ${AdditionalInfo ? `<h4>Additional Information:</h4><p>${AdditionalInfo.replace(/\n/g, '<br>')}</p>` : ''}
+            <hr />
+            <p><em>This is an automated notification from the LMS Remote Registration system.</em></p>
+          `;
+
+          // Send email to all configured notification addresses
+          for (const notificationEmail of notificationEmails) {
+            const mailOptions = {
+              message: {
+                subject: emailSubject,
+                body: {
+                  contentType: "HTML",
+                  content: emailBody,
+                },
+                toRecipients: [
+                  {
+                    emailAddress: {
+                      address: notificationEmail,
+                    },
+                  },
+                ],
+              },
+            };
+
+            await axios.post(sendMailUrl, mailOptions, {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+            });
+
+            console.log(`Notification email sent successfully to ${notificationEmail}`);
+          }
+        } else {
+          console.log('No notification emails configured for selected categories');
+        }
+      } catch (emailError) {
+        console.error('Error sending notification email:', emailError);
+        // Don't fail the registration if email fails
+      }
+
       return res.send({
         code: 0,
         data: {

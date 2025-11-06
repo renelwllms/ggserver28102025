@@ -639,4 +639,64 @@ router.get("/unitStandardsWithCategories", isAuthenticated, async (req, res, nex
   }
 });
 
+// Admin endpoint: Get category notification settings
+router.get("/getCategoryNotificationSettings", isAuthenticated, async (req, res, next) => {
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+
+    const query = `
+      SELECT CategoryName, NotificationEmail
+      FROM tblRemoteRegistrationCategorySettings
+      ORDER BY CategoryName
+    `;
+
+    const result = await request.query(query);
+
+    res.send({ code: 0, data: result.recordset || [] });
+  } catch (error) {
+    console.error("Error getting category notification settings:", error);
+
+    // Check if the error is due to table not existing
+    if (error.message && error.message.includes('Invalid object name')) {
+      return res.send({
+        code: 1,
+        message: "Database table not found. Please run the SQL script: server_V1.1-main/server_V1.1-main/database/add_category_notification_emails.sql",
+        data: []
+      });
+    }
+
+    next(error);
+  }
+});
+
+// Admin endpoint: Update category notification email
+router.put("/updateCategoryNotificationEmail", isAuthenticated, async (req, res, next) => {
+  const { CategoryName, NotificationEmail } = req.body;
+
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+
+    const query = `
+      UPDATE tblRemoteRegistrationCategorySettings
+      SET NotificationEmail = @NotificationEmail,
+          UpdatedDate = GETDATE(),
+          UpdatedBy = @UpdatedBy
+      WHERE CategoryName = @CategoryName
+    `;
+
+    request.input("CategoryName", sql.VarChar, CategoryName);
+    request.input("NotificationEmail", sql.VarChar, NotificationEmail);
+    request.input("UpdatedBy", sql.VarChar, req?.info?.displayName);
+
+    await request.query(query);
+
+    res.send({ code: 0, data: true, message: "Notification email updated successfully" });
+  } catch (error) {
+    console.error("Error updating category notification email:", error);
+    next(error);
+  }
+});
+
 module.exports = router;
